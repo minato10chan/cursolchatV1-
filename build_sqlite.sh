@@ -4,6 +4,11 @@
 mkdir -p sqlite
 cd sqlite
 
+# 必要なビルドツールのインストール
+echo "Installing build tools..."
+apt-get update
+apt-get install -y build-essential gcc g++ make
+
 # SQLite のソースコードをダウンロード
 echo "Downloading SQLite source..."
 curl -L -o sqlite-autoconf-3490100.tar.gz https://www.sqlite.org/2024/sqlite-autoconf-3490100.tar.gz
@@ -23,7 +28,7 @@ cd sqlite-autoconf-3490100
 
 # ビルドとインストール
 echo "Building SQLite..."
-./configure --prefix=/usr/local
+./configure --prefix=/usr/local --enable-json1 --enable-fts5
 make
 make install
 
@@ -31,6 +36,10 @@ make install
 export PATH="/usr/local/bin:$PATH"
 export LD_LIBRARY_PATH="/usr/local/lib:$LD_LIBRARY_PATH"
 export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+# Python の SQLite モジュールを再ビルド
+echo "Rebuilding Python SQLite module..."
+pip install --force-reinstall pysqlite3-binary
 
 cd ../..
 
