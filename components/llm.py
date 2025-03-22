@@ -1,21 +1,22 @@
 import os
 from dotenv import load_dotenv
 load_dotenv() # .envファイルは親ディレクトリ方向に探索される
-OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 from langchain_openai import ChatOpenAI
 from langchain_openai import OpenAIEmbeddings
 
 # ChatOpenAI
 llm = ChatOpenAI(
-    model="gpt-4o-mini", 
+    model="gpt-4",  # または "gpt-3.5-turbo" を使用
     temperature=0,
     api_key=OPENAI_API_KEY
 )
 
 # Embedding モデル
 oai_embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small" #モデルを設定しておく
-    )
+    model="text-embedding-3-small",
+    api_key=OPENAI_API_KEY
+)
 
 # 動作確認
 if __name__ == "__main__":
