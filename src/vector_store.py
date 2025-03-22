@@ -11,78 +11,72 @@ load_dotenv(dotenv_path, verbose=True)
 
 class VectorStore:
     def __init__(self):
-        """Initialize the vector store with in-memory storage."""
-        # インメモリクライアントを使用（SQLiteを使用しない）
+        # ChromaDB クライアントの初期化（インメモリモード）
         self.client = chromadb.Client(
-            settings=chromadb.Settings(
+            chromadb.Settings(
+                is_persistent=False,
                 anonymized_telemetry=False,
-                allow_reset=True,
-                is_persistent=False
+                allow_reset=True
             )
         )
-        self.collection_name = "collection_name_server"
-        self.collection = self._get_or_create_collection()
-        self.embeddings = OpenAIEmbeddings(
-            model="text-embedding-3-small"
+        self.collection = self.client.create_collection(
+            name="documents",
+            metadata={"hnsw:space": "cosine"}
         )
+        self.embeddings = OpenAIEmbeddings()
 
-    def _get_or_create_collection(self):
-        """Get existing collection or create a new one."""
-        try:
-            return self.client.get_collection(name=self.collection_name)
-        except:
-            return self.client.create_collection(name=self.collection_name)
-
-    def add_documents(self, documents, ids=None):
-        """Add documents to the collection."""
-        if ids is None:
-            ids = [f"doc_{i}" for i in range(len(documents))]
+    def add_documents(self, documents):
+        """ドキュメントを追加"""
+        texts = [doc.page_content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [f"doc_{i}" for i in range(len(documents))]
         
-        # Generate embeddings
-        embeddings = self.embeddings.embed_documents(documents)
-        
-        # Add to collection
+        embeddings = self.embeddings.embed_documents(texts)
         self.collection.add(
-            documents=documents,
             embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
             ids=ids
         )
-        return ids
 
-    def update_documents(self, documents, ids):
-        """Update existing documents in the collection."""
-        embeddings = self.embeddings.embed_documents(documents)
+    def update_documents(self, documents):
+        """ドキュメントを更新"""
+        texts = [doc.page_content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [f"doc_{i}" for i in range(len(documents))]
+        
+        embeddings = self.embeddings.embed_documents(texts)
         self.collection.update(
-            documents=documents,
             embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
             ids=ids
         )
 
-    def upsert_documents(self, documents, ids):
-        """Upsert documents (update if exists, insert if not)."""
-        embeddings = self.embeddings.embed_documents(documents)
+    def upsert_documents(self, documents):
+        """ドキュメントを追加または更新"""
+        texts = [doc.page_content for doc in documents]
+        metadatas = [doc.metadata for doc in documents]
+        ids = [f"doc_{i}" for i in range(len(documents))]
+        
+        embeddings = self.embeddings.embed_documents(texts)
         self.collection.upsert(
-            documents=documents,
             embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas,
             ids=ids
         )
 
     def delete_documents(self, ids):
-        """Delete documents from the collection."""
+        """ドキュメントを削除"""
         self.collection.delete(ids=ids)
 
-    def get_documents(self, ids=None):
-        """Get documents from the collection."""
-        if ids is None:
-            return self.collection.get()
+    def get_documents(self, ids):
+        """ドキュメントを取得"""
         return self.collection.get(ids=ids)
 
-    def peek(self):
-        """Peek at the first 10 items in the collection."""
-        return self.collection.peek()
-
     def search(self, query, n_results=5):
-        """Search for similar documents."""
+        """クエリに基づいてドキュメントを検索"""
         query_embedding = self.embeddings.embed_query(query)
         results = self.collection.query(
             query_embeddings=[query_embedding],
@@ -91,5 +85,5 @@ class VectorStore:
         return results
 
     def count(self):
-        """Get the number of documents in the collection."""
+        """ドキュメント数を取得"""
         return self.collection.count() 
