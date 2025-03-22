@@ -1,5 +1,5 @@
 [build]
-command = "bash build_sqlite.sh"
+command = "docker build -t streamlit-app ."
 
 [server]
 enableXsrfProtection = true
