@@ -10,12 +10,22 @@ git clone [your-repository-url]
 cd [repository-name]
 ```
 
-2. 必要なパッケージをインストール
+2. SQLite のセットアップ
+```bash
+# Linux/Mac の場合
+chmod +x build_sqlite.sh
+./build_sqlite.sh
+
+# Windows の場合
+build_sqlite.bat
+```
+
+3. 必要なパッケージをインストール
 ```bash
 pip install -r requirements.txt
 ```
 
-3. 環境変数の設定
+4. 環境変数の設定
 - `.env.example`ファイルを`.env`にコピー
 ```bash
 cp .env.example .env
@@ -42,6 +52,7 @@ streamlit run app.py
 - APIキーは`.env`ファイルで管理され、GitHubにはアップロードされません
 - `.env`ファイルは必ず`.gitignore`に含まれており、誤ってコミットされないようになっています
 - 本番環境では、適切なセキュリティ対策を行ってください
+- SQLite のセットアップには、Visual Studio と CMake が必要です（Windows の場合）
 
 ## ライセンス
 
