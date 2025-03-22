@@ -4,10 +4,8 @@ import os
 from os.path import join, dirname, abspath
 from dotenv import load_dotenv
 
-# Load environment variables
-dir_path = dirname(abspath("__file__"))
-dotenv_path = join(dir_path, '../.env')
-load_dotenv(dotenv_path, verbose=True)
+# Load environment variables (よりシンプルな形式に変更)
+load_dotenv()
 
 class VectorStore:
     def __init__(self):
