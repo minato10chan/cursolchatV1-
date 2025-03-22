@@ -12,8 +12,14 @@ load_dotenv(dotenv_path, verbose=True)
 class VectorStore:
     def __init__(self):
         """Initialize the vector store with in-memory storage."""
-        # インメモリクライアントを使用
-        self.client = chromadb.Client()
+        # インメモリクライアントを使用（SQLiteを使用しない）
+        self.client = chromadb.Client(
+            settings=chromadb.Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+                is_persistent=False
+            )
+        )
         self.collection_name = "collection_name_server"
         self.collection = self._get_or_create_collection()
         self.embeddings = OpenAIEmbeddings(
