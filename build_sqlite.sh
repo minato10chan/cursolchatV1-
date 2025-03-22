@@ -7,7 +7,7 @@ cd sqlite
 # 必要なビルドツールのインストール
 echo "Installing build tools..."
 apt-get update
-apt-get install -y build-essential gcc g++ make
+apt-get install -y build-essential gcc g++ make python3-dev
 
 # SQLite のソースコードをダウンロード
 echo "Downloading SQLite source..."
@@ -40,6 +40,13 @@ export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH"
 # Python の SQLite モジュールを再ビルド
 echo "Rebuilding Python SQLite module..."
 pip install --force-reinstall pysqlite3-binary
+
+# Python の SQLite モジュールを上書き
+echo "Overriding Python SQLite module..."
+PYTHON_PATH=$(python3 -c "import sys; print(sys.executable)")
+PYTHON_DIR=$(dirname "$PYTHON_PATH")
+cp /usr/local/lib/libsqlite3.so* "$PYTHON_DIR/lib/"
+cp /usr/local/bin/sqlite3 "$PYTHON_DIR/bin/"
 
 cd ../..
 
