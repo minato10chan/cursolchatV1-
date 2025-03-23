@@ -52,9 +52,10 @@ def initialize_vector_store():
 # 初期化を試みる
 initialize_vector_store()
 
-def register_document(uploaded_file):
+def register_document(uploaded_file, additional_metadata=None):
     """
     アップロードされたファイルをChromaDBに登録する関数。
+    additional_metadata: 追加のメタデータ辞書
     """
     if not vector_store_available:
         st.error("データベース接続でエラーが発生しました。ChromaDBが使用できません。")
@@ -73,11 +74,18 @@ def register_document(uploaded_file):
                 separators=["\n\n", "\n", ".", " ", ""],
             )
             
+            # 基本メタデータの作成
+            base_metadata = {'source': uploaded_file.name}
+            
+            # 追加メタデータが指定されている場合は統合
+            if additional_metadata:
+                base_metadata.update(additional_metadata)
+            
             # ドキュメントを作成
             from langchain_core.documents import Document
             raw_document = Document(
                 page_content=content,
-                metadata={'source': uploaded_file.name}
+                metadata=base_metadata
             )
             
             # ドキュメントを分割
@@ -85,11 +93,14 @@ def register_document(uploaded_file):
 
             # IDsの作成
             original_ids = []
-            for doc in documents:
-                source_ = os.path.splitext(doc.metadata['source'])[0]  # 拡張子を除く
-                start_ = doc.metadata['start_index']
+            for i, doc in enumerate(documents):
+                source_ = os.path.splitext(uploaded_file.name)[0]  # 拡張子を除く
+                start_ = doc.metadata.get('start_index', i)
                 id_str = f"{source_}_{start_:08}" #0パディングして8桁に
                 original_ids.append(id_str)
+                
+                # 各チャンクには共通のメタデータを維持
+                # start_indexは自動的に追加されるのでそのまま保持
 
             # グローバルのVectorStoreインスタンスを使用
             global vector_store
@@ -120,16 +131,54 @@ def manage_chromadb():
 
     # 1.ドキュメント登録
     st.subheader("ドキュメントをデータベースに登録")
+    
+    # ファイルアップロード
     uploaded_file = st.file_uploader('テキストをアップロードしてください', type='txt')
+    
     if uploaded_file:
+        # メタデータ入力フォーム
+        with st.expander("メタデータ入力", expanded=True):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                municipality = st.text_input("市区町村名", "")
+                major_category = st.text_input("大カテゴリ", "")
+                medium_category = st.text_input("中カテゴリ", "")
+            
+            with col2:
+                source = st.text_input("ソース元", "")
+                date_time = st.date_input("登録日時", value=None)
+                latitude = st.text_input("緯度", "")
+                longitude = st.text_input("経度", "")
+        
+        # 登録ボタン
         if st.button("登録する"):
             with st.spinner('登録中...'):
-                register_document(uploaded_file)
+                # メタデータの作成
+                metadata = {
+                    "municipality": municipality,
+                    "major_category": major_category,
+                    "medium_category": medium_category,
+                    "source": source,
+                    "registration_date": str(date_time) if date_time else "",
+                    "latitude": latitude,
+                    "longitude": longitude,
+                }
+                
+                # ドキュメント登録関数を呼び出し
+                register_document(uploaded_file, additional_metadata=metadata)
 
     st.markdown("---")
 
     # 2.登録状況確認
     st.subheader("ChromaDB 登録状況確認")
+    
+    # 検索フィルター
+    with st.expander("検索フィルター", expanded=False):
+        filter_municipality = st.text_input("市区町村名で絞り込み", "")
+        filter_category = st.text_input("カテゴリで絞り込み", "")
+    
+    # 表示ボタン
     if st.button("登録済みドキュメントを表示"):
         with st.spinner('取得中...'):
             try:
@@ -137,13 +186,44 @@ def manage_chromadb():
                 dict_data = vector_store.get_documents(ids=None)
                 
                 if dict_data and len(dict_data.get('ids', [])) > 0:
+                    # フィルタリング
+                    filtered_indices = range(len(dict_data['ids']))
+                    
+                    if filter_municipality or filter_category:
+                        filtered_indices = []
+                        for i, metadata in enumerate(dict_data['metadatas']):
+                            municipality_match = True
+                            category_match = True
+                            
+                            if filter_municipality and metadata.get('municipality'):
+                                municipality_match = filter_municipality.lower() in metadata['municipality'].lower()
+                            
+                            if filter_category:
+                                major_match = metadata.get('major_category') and filter_category.lower() in metadata['major_category'].lower()
+                                medium_match = metadata.get('medium_category') and filter_category.lower() in metadata['medium_category'].lower()
+                                category_match = major_match or medium_match
+                                
+                            if municipality_match and category_match:
+                                filtered_indices.append(i)
+                    
+                    # フィルタリングされたデータでDataFrameを作成
+                    filtered_ids = [dict_data['ids'][i] for i in filtered_indices]
+                    filtered_docs = [dict_data['documents'][i] for i in filtered_indices]
+                    filtered_metas = [dict_data['metadatas'][i] for i in filtered_indices]
+                    
                     tmp_df = pd.DataFrame({
-                        "IDs": dict_data['ids'],
-                        "Documents": dict_data['documents'],
-                        "Metadatas": dict_data['metadatas']
+                        "IDs": filtered_ids,
+                        "Documents": filtered_docs,
+                        "市区町村": [m.get('municipality', '') for m in filtered_metas],
+                        "大カテゴリ": [m.get('major_category', '') for m in filtered_metas],
+                        "中カテゴリ": [m.get('medium_category', '') for m in filtered_metas],
+                        "ソース元": [m.get('source', '') for m in filtered_metas],
+                        "登録日時": [m.get('registration_date', '') for m in filtered_metas],
+                        "緯度経度": [f"{m.get('latitude', '')}, {m.get('longitude', '')}" for m in filtered_metas]
                     })
+                    
                     st.dataframe(tmp_df)
-                    st.success(f"合計 {len(dict_data['ids'])} 件のドキュメントが登録されています")
+                    st.success(f"合計 {len(filtered_ids)} 件のドキュメントが表示されています（全 {len(dict_data['ids'])} 件中）")
                 else:
                     st.info("データベースに登録されたデータはありません。")
             except Exception as e:
@@ -171,9 +251,10 @@ def manage_chromadb():
                 st.exception(e)
 
 # RAGを使ったLLM回答生成
-def generate_response(query_text):
+def generate_response(query_text, filter_conditions=None):
     """
     質問に対する回答を生成する関数。
+    filter_conditions: メタデータによるフィルタリング条件
     """
     if not vector_store_available:
         return "申し訳ありません。現在、ベクトルデータベースに接続できないため、質問に回答できません。"
@@ -189,15 +270,46 @@ def generate_response(query_text):
             def format_docs(docs):
                 return "\n\n".join(doc.page_content for doc in docs)
 
-            # 検索結果を取得
-            search_results = vector_store.search(query_text)
+            # 検索結果を取得（フィルタリング条件があれば適用）
+            search_results = vector_store.search(query_text, n_results=5, filter_conditions=filter_conditions)
+            
+            # 検索結果がない場合
+            if not search_results or not search_results.get('documents', [[]])[0]:
+                return "申し訳ありません。指定された条件に一致するドキュメントが見つかりませんでした。検索条件を変更してお試しください。"
             
             # 検索結果をドキュメント形式に変換
             from langchain_core.documents import Document
-            docs = [
-                Document(page_content=doc) 
-                for doc in search_results['documents'][0]
-            ]
+            docs = []
+            for i, doc_text in enumerate(search_results['documents'][0]):
+                # メタデータの取得（利用可能な場合）
+                metadata = {}
+                if search_results.get('metadatas') and len(search_results['metadatas']) > 0:
+                    metadata = search_results['metadatas'][0][i] if i < len(search_results['metadatas'][0]) else {}
+                
+                # ドキュメントの作成
+                doc = Document(
+                    page_content=doc_text,
+                    metadata=metadata
+                )
+                docs.append(doc)
+
+            # 使用するメタデータの情報を表示
+            st.markdown("#### 検索結果")
+            meta_info = []
+            for i, doc in enumerate(docs):
+                meta_str = ""
+                if doc.metadata.get('municipality'):
+                    meta_str += f"【市区町村】{doc.metadata['municipality']} "
+                if doc.metadata.get('major_category'):
+                    meta_str += f"【大カテゴリ】{doc.metadata['major_category']} "
+                if doc.metadata.get('medium_category'):
+                    meta_str += f"【中カテゴリ】{doc.metadata['medium_category']} "
+                if doc.metadata.get('source'):
+                    meta_str += f"【ソース元】{doc.metadata['source']}"
+                
+                meta_info.append(f"{i+1}. {meta_str}")
+            
+            st.markdown("\n".join(meta_info))
 
             qa_chain = (
                 {
@@ -227,6 +339,18 @@ def ask_question():
         st.info("ローカル環境での実行をお試しください。")
         return
 
+    # フィルタリング条件の設定
+    with st.expander("検索範囲の絞り込み", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            filter_municipality = st.text_input("市区町村名", "")
+            filter_major_category = st.text_input("大カテゴリ", "")
+        
+        with col2:
+            filter_medium_category = st.text_input("中カテゴリ", "")
+            filter_source = st.text_input("ソース元", "")
+
     # Query text
     query_text = st.text_input('質問を入力:', 
                                placeholder='簡単な概要を記入してください')
@@ -234,7 +358,18 @@ def ask_question():
     # 質問送信ボタン
     if st.button('Submit') and query_text:
         with st.spinner('回答を生成中...'):
-            response = generate_response(query_text)
+            # フィルタリング条件の作成
+            filter_conditions = {}
+            if filter_municipality:
+                filter_conditions["municipality"] = filter_municipality
+            if filter_major_category:
+                filter_conditions["major_category"] = filter_major_category
+            if filter_medium_category:
+                filter_conditions["medium_category"] = filter_medium_category
+            if filter_source:
+                filter_conditions["source"] = filter_source
+                
+            response = generate_response(query_text, filter_conditions)
             if response:
                 st.success("回答:")
                 st.info(response)

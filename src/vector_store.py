@@ -163,15 +163,46 @@ class VectorStore:
             print(f"Error getting documents: {e}")
             return {"ids": [], "documents": [], "metadatas": []}
 
-    def search(self, query, n_results=5):
-        """クエリに基づいてドキュメントを検索"""
+    def search(self, query, n_results=5, filter_conditions=None):
+        """
+        クエリに基づいてドキュメントを検索
+        
+        引数:
+            query: 検索クエリ
+            n_results: 返す結果の数
+            filter_conditions: メタデータによるフィルタリング条件の辞書 {"field": "value"}
+        """
         try:
+            # クエリの埋め込みを生成
             query_embedding = self.embeddings.embed_query(query)
+            
+            # フィルタリング条件を作成（指定されている場合）
+            where = None
+            where_document = None
+            
+            if filter_conditions:
+                # ChromaDBのwhere句はAND条件で結合される
+                where = {}
+                
+                for key, value in filter_conditions.items():
+                    # 完全一致ではなく、部分一致で検索するためには複雑なクエリ構造が必要
+                    # ChromaDBの制限により完全一致になる
+                    if key and value:
+                        where[key] = value
+                
+                print(f"Applying filter conditions: {where}")
+            
+            # 検索を実行
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=n_results
+                n_results=n_results,
+                where=where,
+                where_document=where_document
             )
-            print(f"Search query '{query}' returned {len(results.get('ids', [[]])[0])} results")
+            
+            n_results = len(results.get('ids', [[]])[0])
+            print(f"Search query '{query}' returned {n_results} results with filters: {filter_conditions}")
+            
             return results
         except Exception as e:
             print(f"Error searching documents: {e}")
