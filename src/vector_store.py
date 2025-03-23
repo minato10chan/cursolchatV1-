@@ -1,52 +1,92 @@
-import chromadb
-from langchain_openai import OpenAIEmbeddings
 import os
 from os.path import join, dirname, abspath
 from dotenv import load_dotenv
 import sys
+import sqlite3
 
 # Load environment variables
 load_dotenv()
 
-# ChromaDBのSQLiteバージョンチェックをバイパスするための試み
-try:
-    import chromadb
-    # ChromaDBのインポート成功後にフラグを設定
-    sys.modules['chromadb']._SQLITE_SENTINEL_FILE = True
-except (ImportError, AttributeError) as e:
-    print(f"Error setting up ChromaDB: {e}")
+# SQLiteバージョンを確認して警告
+sqlite_version = sqlite3.sqlite_version
+print(f"Vector store using SQLite version: {sqlite_version}")
+
+# ChromaDBのSQLiteバージョンチェックをバイパスする試み
+# バージョンが3.35.0未満の場合はDuckDBを使用
+USE_DUCKDB = False
+if sqlite3.sqlite_version_info < (3, 35, 0):
+    print("SQLite version is lower than required. Using DuckDB instead.")
+    USE_DUCKDB = True
+    
+    # ChromaDBをインポートする前に設定を環境変数で行う
+    os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
+    
+    # センチネルファイルを設定
+    try:
+        # 実際のchromadbライブラリをインポート
+        import chromadb
+        # センチネルファイルフラグを設定
+        if hasattr(chromadb, "_SQLITE_SENTINEL_FILE"):
+            chromadb._SQLITE_SENTINEL_FILE = True
+        else:
+            print("Warning: Could not set _SQLITE_SENTINEL_FILE attribute")
+    except Exception as e:
+        print(f"Error preparing ChromaDB: {e}")
+
+# 修正の後でchromadbをインポート
+import chromadb
+from langchain_openai import OpenAIEmbeddings
 
 class VectorStore:
     def __init__(self):
-        # ChromaDB クライアントの初期化（インメモリモード）
         try:
-            self.client = chromadb.Client(
-                chromadb.Settings(
+            # ChromaDB クライアントの初期化（インメモリモード）
+            settings = {}
+            
+            # DuckDB+Parquetを使用する場合
+            if USE_DUCKDB:
+                settings = chromadb.Settings(
                     chroma_db_impl="duckdb+parquet",  # SQLiteではなくDuckDBを使用
                     persist_directory=None,  # インメモリモード
-                    is_persistent=False,
                     anonymized_telemetry=False,
                     allow_reset=True
                 )
-            )
+            # SQLiteを使用する場合
+            else:
+                settings = chromadb.Settings(
+                    is_persistent=False,  # インメモリモード
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
+                
+            print(f"Initializing ChromaDB with settings: {settings}")
+            self.client = chromadb.Client(settings)
+            
             # コレクションの作成または取得
             try:
+                # まず既存のコレクションを取得
                 self.collection = self.client.get_collection(name="documents")
                 print("Collection 'documents' already exists, using existing collection")
-            except Exception:
-                print("Creating new collection 'documents'")
+            except Exception as e:
+                print(f"Collection not found, creating new: {e}")
+                # 存在しない場合は新しく作成
                 self.collection = self.client.create_collection(
                     name="documents",
                     metadata={"hnsw:space": "cosine"}
                 )
-        except Exception as e:
-            print(f"Error initializing ChromaDB: {e}")
-            # フォールバックとして空のコレクションを作成
-            from chromadb.api.models.Collection import Collection
-            self.collection = None
+                print("Created new collection 'documents'")
+                
+            # 埋め込みモデルの設定
+            self.embeddings = OpenAIEmbeddings()
             
-        # 埋め込みモデルの設定
-        self.embeddings = OpenAIEmbeddings()
+        except Exception as e:
+            print(f"Critical error initializing ChromaDB: {e}")
+            # ダミーコレクションとしてフォールバック
+            self.collection = None
+            self.client = None
+            self.embeddings = None
+            # エラーを再送出して上位で処理
+            raise
 
     def add_documents(self, documents):
         """ドキュメントを追加"""

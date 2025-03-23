@@ -1,8 +1,20 @@
-# SQLiteの互換性問題を解決するために、最初にインポート
+# SQLiteの互換性問題を解決するために、最初に実行
 try:
+    # pysqlite3を使用してSQLite3を上書きする試み
+    import sys
+    try:
+        import pysqlite3
+        # SQLite3をpysqlite3で上書き
+        sys.modules["sqlite3"] = pysqlite3
+        print("Successfully patched sqlite3 with pysqlite3")
+    except ImportError:
+        print("pysqlite3 not found, proceeding with system sqlite3")
+        
+    # SQLiteバージョンチェックの修正
     import sqlite_fix
-except ImportError:
-    print("SQLite fix module not found, continuing without it")
+except Exception as e:
+    print(f"SQLite fix failed: {e}")
+    print("Continuing without SQLite fixes")
 
 import streamlit as st
 from langchain_openai import OpenAI
@@ -18,8 +30,16 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import tempfile
 import os
 import pandas as pd
-from src.vector_store import VectorStore
+# ChromaDBとVectorStoreのインポートは後で行う (SQLite修正後)
 import io
+
+# VectorStoreのインポートをここで行う (SQLite修正後)
+try:
+    from src.vector_store import VectorStore
+    print("VectorStore successfully imported")
+except Exception as e:
+    print(f"Error importing VectorStore: {e}")
+    st.error("データベース接続でエラーが発生しました。詳細はログを確認してください。")
 
 def register_document(uploaded_file):
     """
