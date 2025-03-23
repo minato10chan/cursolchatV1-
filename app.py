@@ -1,4 +1,4 @@
-# SQLiteの互換性問題を解決するために、最初に実行
+# SQLiteの互換性問題を解決するために、最初に実行（st.error の前に）
 try:
     # pysqlite3を使用してSQLite3を上書きする試み
     import sys
@@ -17,6 +17,10 @@ except Exception as e:
     print("Continuing without SQLite fixes")
 
 import streamlit as st
+
+# 最初のStreamlitコマンドとしてページ設定を行う
+st.set_page_config(page_title='🦜🔗 Ask the Doc App', layout="wide")
+
 from langchain_openai import OpenAI
 from langchain import hub
 from langchain_core.output_parsers import StrOutputParser
@@ -34,17 +38,23 @@ import pandas as pd
 import io
 
 # VectorStoreのインポートをここで行う (SQLite修正後)
+vector_store = None
 try:
     from src.vector_store import VectorStore
     print("VectorStore successfully imported")
+    vector_store_available = True
 except Exception as e:
     print(f"Error importing VectorStore: {e}")
-    st.error("データベース接続でエラーが発生しました。詳細はログを確認してください。")
+    vector_store_available = False
 
 def register_document(uploaded_file):
     """
     アップロードされたファイルをChromaDBに登録する関数。
     """
+    if not vector_store_available:
+        st.error("データベース接続でエラーが発生しました。ChromaDBが使用できません。")
+        return
+    
     if uploaded_file is not None:
         try:
             # ファイルの内容を文字列として読み込み
@@ -80,10 +90,7 @@ def register_document(uploaded_file):
             vector_store = VectorStore()
 
             # ドキュメントの追加（UPSERT）
-            vector_store.upsert_documents(
-                documents=[doc.page_content for doc in documents],
-                ids=original_ids
-            )
+            vector_store.upsert_documents(documents=documents)
 
             st.success(f"{uploaded_file.name} をデータベースに登録しました。")
         except Exception as e:
@@ -97,8 +104,17 @@ def manage_chromadb():
     """
     st.header("ChromaDB 管理")
 
+    if not vector_store_available:
+        st.error("ChromaDBの接続でエラーが発生しました。現在、ベクトルデータベースは使用できません。")
+        st.warning("これはSQLiteのバージョンの非互換性によるものです。Streamlit Cloudでの実行には制限があります。")
+        return
+
     # VectorStoreの初期化
-    vector_store = VectorStore()
+    try:
+        vector_store = VectorStore()
+    except Exception as e:
+        st.error(f"ChromaDBの初期化に失敗しました: {e}")
+        return
 
     # 1.ドキュメント登録
     st.subheader("ドキュメントをデータベースに登録")
@@ -115,8 +131,8 @@ def manage_chromadb():
     if st.button("登録済みドキュメントを表示"):
         with st.spinner('取得中...'):
             try:
-                dict_data = vector_store.get_documents()
-                if dict_data['ids']:
+                dict_data = vector_store.get_documents(ids=None)
+                if dict_data and dict_data.get('ids'):
                     tmp_df = pd.DataFrame({
                         "IDs": dict_data['ids'],
                         "Documents": dict_data['documents'],
@@ -137,7 +153,7 @@ def manage_chromadb():
     if st.button("全データを削除する"):
         with st.spinner('削除中...'):
             try:
-                current_ids = vector_store.get_documents()['ids']
+                current_ids = vector_store.get_documents(ids=None)['ids']
                 if current_ids:
                     vector_store.delete_documents(ids=current_ids)
                     st.success("データベースの登録がすべて削除されました")
@@ -153,6 +169,9 @@ def generate_response(query_text):
     """
     質問に対する回答を生成する関数。
     """
+    if not vector_store_available:
+        return "申し訳ありません。現在、ベクトルデータベースに接続できないため、質問に回答できません。"
+    
     if query_text:
         try:
             # VectorStoreの初期化
@@ -196,6 +215,12 @@ def ask_question():
     """
     st.header("ドキュメントに質問する")
 
+    if not vector_store_available:
+        st.error("ChromaDBの接続でエラーが発生しました。現在、ベクトルデータベースは使用できません。")
+        st.warning("これはSQLiteのバージョンの非互換性によるものです。Streamlit Cloudでの実行には制限があります。")
+        st.info("ローカル環境での実行をお試しください。")
+        return
+
     # Query text
     query_text = st.text_input('質問を入力:', 
                                placeholder='簡単な概要を記入してください')
@@ -210,13 +235,55 @@ def ask_question():
             else:
                 st.error("回答の生成に失敗しました。")
 
+def fallback_mode():
+    """
+    ChromaDBが使用できない場合のフォールバックモード
+    """
+    st.header("ChromaDBが使用できません")
+    st.error("SQLiteのバージョンの問題により、ChromaDBを使用できません。")
+    st.info("このアプリは、SQLite 3.35.0以上が必要です。Streamlit Cloudでは現在、SQLite 3.34.1が使用されています。")
+    
+    st.markdown("""
+    ## 解決策
+    
+    1. **ローカル環境での実行**: 
+       - このアプリをローカル環境でクローンして実行してください
+       - 最新のSQLiteがインストールされていることを確認してください
+    
+    2. **代替のベクトルデータベース**:
+       - ChromaDBの代わりに、他のベクトルデータベース（FAISS、Milvusなど）を使用することも検討できます
+    
+    3. **インメモリモードでの使用**:
+       - 現在、DuckDB+Parquetバックエンドでの実行を試みていますが、これも失敗しています
+       - 詳細については、ログを確認してください
+    """)
+    
+    # 技術的な詳細
+    with st.expander("技術的な詳細"):
+        st.code("""
+# エラーの原因
+ChromaDBは内部でSQLite 3.35.0以上を必要としていますが、
+Streamlit Cloudでは現在、SQLite 3.34.1が使用されています。
+
+# 試みた解決策
+1. pysqlite3-binaryのインストール
+2. SQLiteのソースからのビルド
+3. DuckDB+Parquetバックエンドの使用
+4. モンキーパッチの適用
+
+いずれも環境制限により成功していません。
+        """)
+
 def main():
     """
     アプリケーションのメイン関数。
     """
-    # ページの設定
-    st.set_page_config(page_title='🦜🔗 Ask the Doc App', layout="wide")
+    # タイトルを表示
     st.title('🦜🔗 Ask the Doc App')
+
+    if not vector_store_available:
+        fallback_mode()
+        return
 
     # サイドバーでページ選択
     st.sidebar.title("メニュー")

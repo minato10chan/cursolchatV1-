@@ -116,27 +116,61 @@ class VectorStore:
             ids=ids
         )
 
-    def upsert_documents(self, documents):
+    def upsert_documents(self, documents, ids=None):
         """ドキュメントを追加または更新"""
-        texts = [doc.page_content for doc in documents]
-        metadatas = [doc.metadata for doc in documents]
-        ids = [f"doc_{i}" for i in range(len(documents))]
-        
-        embeddings = self.embeddings.embed_documents(texts)
-        self.collection.upsert(
-            embeddings=embeddings,
-            documents=texts,
-            metadatas=metadatas,
-            ids=ids
-        )
+        try:
+            if self.collection is None:
+                print("Collection is not available")
+                return
+            
+            # Documentオブジェクトの場合とプレーンテキストの場合の両方に対応
+            if hasattr(documents[0], 'page_content'):
+                # Documentオブジェクトの場合
+                texts = [doc.page_content for doc in documents]
+                metadatas = [doc.metadata for doc in documents]
+            else:
+                # プレーンテキストの場合
+                texts = documents
+                metadatas = [{} for _ in documents]
+            
+            # IDsの生成または使用
+            if ids is None:
+                ids = [f"doc_{i}" for i in range(len(documents))]
+            
+            # 埋め込みの生成
+            try:
+                embeddings = self.embeddings.embed_documents(texts)
+                
+                # ドキュメントの追加
+                self.collection.upsert(
+                    embeddings=embeddings,
+                    documents=texts,
+                    metadatas=metadatas,
+                    ids=ids
+                )
+                print(f"Successfully upserted {len(texts)} documents")
+            except Exception as e:
+                print(f"Error generating embeddings or upserting documents: {e}")
+        except Exception as e:
+            print(f"Error in upsert_documents: {e}")
 
     def delete_documents(self, ids):
         """ドキュメントを削除"""
         self.collection.delete(ids=ids)
 
-    def get_documents(self, ids):
+    def get_documents(self, ids=None):
         """ドキュメントを取得"""
-        return self.collection.get(ids=ids)
+        try:
+            if self.collection is None:
+                return {"ids": [], "documents": [], "metadatas": []}
+            
+            # idsが指定されていない場合はすべてのドキュメントを取得
+            if ids is None:
+                return self.collection.get()
+            return self.collection.get(ids=ids)
+        except Exception as e:
+            print(f"Error getting documents: {e}")
+            return {"ids": [], "documents": [], "metadatas": []}
 
     def search(self, query, n_results=5):
         """クエリに基づいてドキュメントを検索"""

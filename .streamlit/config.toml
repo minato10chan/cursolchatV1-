@@ -1,7 +1,6 @@
 [server]
 enableXsrfProtection = true
 enableCORS = false
-preloadScript = "streamlit_sqlite_fix.py"
 
 [theme]
 primaryColor = "#FF4B4B"
