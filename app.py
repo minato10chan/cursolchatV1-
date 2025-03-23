@@ -28,15 +28,29 @@ import pandas as pd
 # ChromaDBとVectorStoreのインポートは後で行う (SQLite修正後)
 import io
 
-# VectorStoreのインポートをここで行う (SQLite修正後)
+# グローバル変数の初期化
 vector_store = None
-try:
-    from src.vector_store import VectorStore
-    print("VectorStore successfully imported")
-    vector_store_available = True
-except Exception as e:
-    print(f"Error importing VectorStore: {e}")
-    vector_store_available = False
+vector_store_available = False
+
+# VectorStoreのインスタンスを初期化する関数
+def initialize_vector_store():
+    global vector_store, vector_store_available
+    if vector_store is not None:
+        return vector_store
+        
+    try:
+        from src.vector_store import VectorStore
+        vector_store = VectorStore()
+        vector_store_available = True
+        print("VectorStore successfully initialized")
+        return vector_store
+    except Exception as e:
+        vector_store_available = False
+        print(f"Error initializing VectorStore: {e}")
+        return None
+
+# 初期化を試みる
+initialize_vector_store()
 
 def register_document(uploaded_file):
     """
@@ -77,13 +91,14 @@ def register_document(uploaded_file):
                 id_str = f"{source_}_{start_:08}" #0パディングして8桁に
                 original_ids.append(id_str)
 
-            # VectorStoreの初期化
-            vector_store = VectorStore()
-
+            # グローバルのVectorStoreインスタンスを使用
+            global vector_store
+            
             # ドキュメントの追加（UPSERT）
-            vector_store.upsert_documents(documents=documents)
+            vector_store.upsert_documents(documents=documents, ids=original_ids)
 
             st.success(f"{uploaded_file.name} をデータベースに登録しました。")
+            st.info(f"{len(documents)}件のチャンクに分割されました")
         except Exception as e:
             st.error(f"ドキュメントの登録中にエラーが発生しました: {e}")
             st.error("エラーの詳細:")
@@ -100,12 +115,8 @@ def manage_chromadb():
         st.warning("これはSQLiteのバージョンの非互換性によるものです。Streamlit Cloudでの実行には制限があります。")
         return
 
-    # VectorStoreの初期化
-    try:
-        vector_store = VectorStore()
-    except Exception as e:
-        st.error(f"ChromaDBの初期化に失敗しました: {e}")
-        return
+    # グローバルのvector_storeを使用
+    global vector_store
 
     # 1.ドキュメント登録
     st.subheader("ドキュメントをデータベースに登録")
@@ -122,14 +133,17 @@ def manage_chromadb():
     if st.button("登録済みドキュメントを表示"):
         with st.spinner('取得中...'):
             try:
+                # グローバルのVectorStoreインスタンスを使用
                 dict_data = vector_store.get_documents(ids=None)
-                if dict_data and dict_data.get('ids'):
+                
+                if dict_data and len(dict_data.get('ids', [])) > 0:
                     tmp_df = pd.DataFrame({
                         "IDs": dict_data['ids'],
                         "Documents": dict_data['documents'],
                         "Metadatas": dict_data['metadatas']
                     })
                     st.dataframe(tmp_df)
+                    st.success(f"合計 {len(dict_data['ids'])} 件のドキュメントが登録されています")
                 else:
                     st.info("データベースに登録されたデータはありません。")
             except Exception as e:
@@ -144,10 +158,11 @@ def manage_chromadb():
     if st.button("全データを削除する"):
         with st.spinner('削除中...'):
             try:
-                current_ids = vector_store.get_documents(ids=None)['ids']
+                # グローバルのVectorStoreインスタンスを使用
+                current_ids = vector_store.get_documents(ids=None).get('ids', [])
                 if current_ids:
                     vector_store.delete_documents(ids=current_ids)
-                    st.success("データベースの登録がすべて削除されました")
+                    st.success(f"データベースから {len(current_ids)} 件のドキュメントが削除されました")
                 else:
                     st.info("削除するデータがありません。")
             except Exception as e:
@@ -165,8 +180,8 @@ def generate_response(query_text):
     
     if query_text:
         try:
-            # VectorStoreの初期化
-            vector_store = VectorStore()
+            # グローバルのVectorStoreインスタンスを使用
+            global vector_store
 
             # リトリーバーとQAチェーンの設定
             prompt = hub.pull("rlm/rag-prompt")
