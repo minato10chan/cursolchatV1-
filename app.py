@@ -1,20 +1,11 @@
-# SQLiteの互換性問題を解決するために、最初に実行（st.error の前に）
+# SQLiteをpysqlite3で上書き
 try:
-    # pysqlite3を使用してSQLite3を上書きする試み
+    __import__('pysqlite3')
     import sys
-    try:
-        import pysqlite3
-        # SQLite3をpysqlite3で上書き
-        sys.modules["sqlite3"] = pysqlite3
-        print("Successfully patched sqlite3 with pysqlite3")
-    except ImportError:
-        print("pysqlite3 not found, proceeding with system sqlite3")
-        
-    # SQLiteバージョンチェックの修正
-    import sqlite_fix
-except Exception as e:
-    print(f"SQLite fix failed: {e}")
-    print("Continuing without SQLite fixes")
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+    print("Successfully overrode sqlite3 with pysqlite3")
+except ImportError:
+    print("Failed to override sqlite3 with pysqlite3")
 
 import streamlit as st
 

@@ -1,91 +1,51 @@
 import os
-from os.path import join, dirname, abspath
 from dotenv import load_dotenv
 import sys
 import sqlite3
 
-# Load environment variables
+# 環境変数のロード
 load_dotenv()
 
-# SQLiteバージョンを確認して警告
-sqlite_version = sqlite3.sqlite_version
-print(f"Vector store using SQLite version: {sqlite_version}")
+# SQLiteのバージョン確認
+print(f"Using SQLite version: {sqlite3.sqlite_version}")
 
-# ChromaDBのSQLiteバージョンチェックをバイパスする試み
-# バージョンが3.35.0未満の場合はDuckDBを使用
-USE_DUCKDB = False
-if sqlite3.sqlite_version_info < (3, 35, 0):
-    print("SQLite version is lower than required. Using DuckDB instead.")
-    USE_DUCKDB = True
-    
-    # ChromaDBをインポートする前に設定を環境変数で行う
-    os.environ["CHROMA_DB_IMPL"] = "duckdb+parquet"
-    
-    # センチネルファイルを設定
-    try:
-        # 実際のchromadbライブラリをインポート
-        import chromadb
-        # センチネルファイルフラグを設定
-        if hasattr(chromadb, "_SQLITE_SENTINEL_FILE"):
-            chromadb._SQLITE_SENTINEL_FILE = True
-        else:
-            print("Warning: Could not set _SQLITE_SENTINEL_FILE attribute")
-    except Exception as e:
-        print(f"Error preparing ChromaDB: {e}")
-
-# 修正の後でchromadbをインポート
+# chromadbのインポート
 import chromadb
 from langchain_openai import OpenAIEmbeddings
 
 class VectorStore:
     def __init__(self):
+        """ChromaDBのベクトルストアを初期化"""
         try:
-            # ChromaDB クライアントの初期化（インメモリモード）
-            settings = {}
-            
-            # DuckDB+Parquetを使用する場合
-            if USE_DUCKDB:
-                settings = chromadb.Settings(
-                    chroma_db_impl="duckdb+parquet",  # SQLiteではなくDuckDBを使用
-                    persist_directory=None,  # インメモリモード
+            # ChromaDBクライアントの初期化（インメモリモード）
+            self.client = chromadb.Client(
+                chromadb.Settings(
+                    is_persistent=False,
                     anonymized_telemetry=False,
                     allow_reset=True
                 )
-            # SQLiteを使用する場合
-            else:
-                settings = chromadb.Settings(
-                    is_persistent=False,  # インメモリモード
-                    anonymized_telemetry=False,
-                    allow_reset=True
-                )
-                
-            print(f"Initializing ChromaDB with settings: {settings}")
-            self.client = chromadb.Client(settings)
+            )
             
-            # コレクションの作成または取得
+            # コレクションの作成
             try:
-                # まず既存のコレクションを取得
                 self.collection = self.client.get_collection(name="documents")
-                print("Collection 'documents' already exists, using existing collection")
-            except Exception as e:
-                print(f"Collection not found, creating new: {e}")
-                # 存在しない場合は新しく作成
+                print("Collection 'documents' already exists")
+            except Exception:
+                print("Creating new collection 'documents'")
                 self.collection = self.client.create_collection(
                     name="documents",
                     metadata={"hnsw:space": "cosine"}
                 )
-                print("Created new collection 'documents'")
                 
             # 埋め込みモデルの設定
             self.embeddings = OpenAIEmbeddings()
             
         except Exception as e:
-            print(f"Critical error initializing ChromaDB: {e}")
-            # ダミーコレクションとしてフォールバック
+            print(f"Error initializing ChromaDB: {e}")
             self.collection = None
             self.client = None
             self.embeddings = None
-            # エラーを再送出して上位で処理
+            # エラーを上位で処理するために再送出
             raise
 
     def add_documents(self, documents):
@@ -137,20 +97,15 @@ class VectorStore:
             if ids is None:
                 ids = [f"doc_{i}" for i in range(len(documents))]
             
-            # 埋め込みの生成
-            try:
-                embeddings = self.embeddings.embed_documents(texts)
-                
-                # ドキュメントの追加
-                self.collection.upsert(
-                    embeddings=embeddings,
-                    documents=texts,
-                    metadatas=metadatas,
-                    ids=ids
-                )
-                print(f"Successfully upserted {len(texts)} documents")
-            except Exception as e:
-                print(f"Error generating embeddings or upserting documents: {e}")
+            # 埋め込みの生成と追加
+            embeddings = self.embeddings.embed_documents(texts)
+            self.collection.upsert(
+                embeddings=embeddings,
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids
+            )
+            print(f"Successfully upserted {len(texts)} documents")
         except Exception as e:
             print(f"Error in upsert_documents: {e}")
 
