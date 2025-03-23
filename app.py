@@ -16,6 +16,7 @@ from langchain_openai import OpenAI
 from langchain import hub
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
+from langchain_core.prompts import ChatPromptTemplate
 # --- LLM --- (componentsフォルダにllm.pyを配置する)---
 from components.llm import llm
 from components.llm import oai_embeddings
@@ -27,6 +28,23 @@ import os
 import pandas as pd
 # ChromaDBとVectorStoreのインポートは後で行う (SQLite修正後)
 import io
+
+# カスタムRAGプロンプトテンプレートを定義
+# langchainhubに依存せずに自前でプロンプトを定義
+RAG_PROMPT_TEMPLATE = """あなたは質問回答ボットです。以下の与えられたコンテキスト情報を使用して、ユーザーの質問に答えてください。
+
+コンテキスト情報: 
+{context}
+
+質問: {question}
+
+回答のルール:
+- コンテキスト情報に基づいて正確に回答してください。
+- コンテキスト情報に関連情報がない場合は、「その情報はコンテキストに含まれていません」と正直に伝えてください。
+- 回答は日本語で、丁寧かつ簡潔にしてください。
+- コンテキストの情報源のメタデータ（市区町村名、カテゴリ等）も参考にして回答してください。
+
+回答:"""
 
 # グローバル変数の初期化
 vector_store = None
@@ -264,8 +282,15 @@ def generate_response(query_text, filter_conditions=None):
             # グローバルのVectorStoreインスタンスを使用
             global vector_store
 
-            # リトリーバーとQAチェーンの設定
-            prompt = hub.pull("rlm/rag-prompt")
+            # カスタムプロンプトテンプレートを作成
+            try:
+                # まずhub.pullを試す（langchainhubがインストールされている場合）
+                prompt = hub.pull("rlm/rag-prompt")
+                print("Successfully pulled prompt from langchain hub")
+            except (ImportError, Exception) as e:
+                # 失敗した場合は自前のプロンプトを使用
+                print(f"Using custom prompt template due to: {e}")
+                prompt = ChatPromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
 
             def format_docs(docs):
                 return "\n\n".join(doc.page_content for doc in docs)
