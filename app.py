@@ -1,3 +1,9 @@
+# SQLiteの互換性問題を解決するために、最初にインポート
+try:
+    import sqlite_fix
+except ImportError:
+    print("SQLite fix module not found, continuing without it")
+
 import streamlit as st
 from langchain_openai import OpenAI
 from langchain import hub

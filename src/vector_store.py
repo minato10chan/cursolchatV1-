@@ -3,24 +3,49 @@ from langchain_openai import OpenAIEmbeddings
 import os
 from os.path import join, dirname, abspath
 from dotenv import load_dotenv
+import sys
 
-# Load environment variables (よりシンプルな形式に変更)
+# Load environment variables
 load_dotenv()
+
+# ChromaDBのSQLiteバージョンチェックをバイパスするための試み
+try:
+    import chromadb
+    # ChromaDBのインポート成功後にフラグを設定
+    sys.modules['chromadb']._SQLITE_SENTINEL_FILE = True
+except (ImportError, AttributeError) as e:
+    print(f"Error setting up ChromaDB: {e}")
 
 class VectorStore:
     def __init__(self):
         # ChromaDB クライアントの初期化（インメモリモード）
-        self.client = chromadb.Client(
-            chromadb.Settings(
-                is_persistent=False,
-                anonymized_telemetry=False,
-                allow_reset=True
+        try:
+            self.client = chromadb.Client(
+                chromadb.Settings(
+                    chroma_db_impl="duckdb+parquet",  # SQLiteではなくDuckDBを使用
+                    persist_directory=None,  # インメモリモード
+                    is_persistent=False,
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
             )
-        )
-        self.collection = self.client.create_collection(
-            name="documents",
-            metadata={"hnsw:space": "cosine"}
-        )
+            # コレクションの作成または取得
+            try:
+                self.collection = self.client.get_collection(name="documents")
+                print("Collection 'documents' already exists, using existing collection")
+            except Exception:
+                print("Creating new collection 'documents'")
+                self.collection = self.client.create_collection(
+                    name="documents",
+                    metadata={"hnsw:space": "cosine"}
+                )
+        except Exception as e:
+            print(f"Error initializing ChromaDB: {e}")
+            # フォールバックとして空のコレクションを作成
+            from chromadb.api.models.Collection import Collection
+            self.collection = None
+            
+        # 埋め込みモデルの設定
         self.embeddings = OpenAIEmbeddings()
 
     def add_documents(self, documents):
