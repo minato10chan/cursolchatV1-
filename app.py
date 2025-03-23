@@ -81,15 +81,32 @@ def register_document(uploaded_file, additional_metadata=None):
     
     if uploaded_file is not None:
         try:
-            # ファイルの内容を文字列として読み込み
-            content = uploaded_file.getvalue().decode('utf-8')
+            # ファイルの内容を読み込み - 複数のエンコーディングを試す
+            content = None
+            encodings_to_try = ['utf-8', 'shift_jis', 'cp932', 'euc_jp', 'iso2022_jp']
+            
+            file_bytes = uploaded_file.getvalue()
+            
+            # 異なるエンコーディングを試す
+            for encoding in encodings_to_try:
+                try:
+                    content = file_bytes.decode(encoding)
+                    st.success(f"ファイルを {encoding} エンコーディングで読み込みました")
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            # どのエンコーディングでも読み込めなかった場合
+            if content is None:
+                st.error("ファイルのエンコーディングを検出できませんでした。UTF-8, Shift-JIS, EUC-JP, ISO-2022-JPのいずれかで保存されたファイルをお試しください。")
+                return
             
             # メモリ内でテキストを分割
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=512,
                 chunk_overlap=10,
                 add_start_index=True,
-                separators=["\n\n", "\n", ".", " ", ""],
+                separators=["\n\n", "\n", "。", ".", " ", ""],
             )
             
             # 基本メタデータの作成
