@@ -16,14 +16,20 @@ from langchain_openai import OpenAIEmbeddings
 # 固定のコレクション名
 COLLECTION_NAME = "ask_the_doc_collection"
 
+# データ保存用のディレクトリパス
+PERSIST_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
+
 class VectorStore:
     def __init__(self):
         """ChromaDBのベクトルストアを初期化"""
         try:
-            # ChromaDBクライアントの初期化（インメモリモード）
-            self.client = chromadb.Client(
-                chromadb.Settings(
-                    is_persistent=False,
+            # データ保存用ディレクトリが存在しない場合は作成
+            os.makedirs(PERSIST_DIRECTORY, exist_ok=True)
+            
+            # ChromaDBクライアントの初期化（永続化モード）
+            self.client = chromadb.PersistentClient(
+                path=PERSIST_DIRECTORY,
+                settings=chromadb.Settings(
                     anonymized_telemetry=False,
                     allow_reset=True
                 )
