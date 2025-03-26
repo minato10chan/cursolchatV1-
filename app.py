@@ -8,6 +8,7 @@ except ImportError:
     print("Failed to override sqlite3 with pysqlite3")
 
 import streamlit as st
+import datetime
 
 # 最初のStreamlitコマンドとしてページ設定を行う
 st.set_page_config(page_title='🦜🔗 Ask the Doc App', layout="wide")
@@ -323,7 +324,7 @@ def manage_chromadb():
             
             with col2:
                 source = st.text_input("ソース元", "")
-                date_time = st.date_input("登録日時", value=None)
+                date_time = st.date_input("登録日時", value=datetime.date.today())
                 publication_date = st.date_input("データ公開日", value=None)
                 latitude = st.text_input("緯度", "")
                 longitude = st.text_input("経度", "")
