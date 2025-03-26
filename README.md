@@ -58,7 +58,4 @@ streamlit run app.py
 
 ## ライセンス
 
-MIT License 
-
-
-データ公開日
+MIT License

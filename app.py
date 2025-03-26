@@ -397,6 +397,7 @@ def manage_chromadb():
                         "中カテゴリ": [m.get('medium_category', '') for m in filtered_metas],
                         "ソース元": [m.get('source', '') for m in filtered_metas],
                         "登録日時": [m.get('registration_date', '') for m in filtered_metas],
+                        "データ公開日": [m.get('publication_date', '') for m in filtered_metas],
                         "緯度経度": [f"{m.get('latitude', '')}, {m.get('longitude', '')}" for m in filtered_metas]
                     })
                     
