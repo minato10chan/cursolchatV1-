@@ -21,18 +21,12 @@ class VectorStore:
     def __init__(self):
         """ChromaDBのベクトルストアを初期化"""
         try:
-            # 一時ディレクトリを使用
-            temp_dir = tempfile.gettempdir()
-            persist_dir = os.path.join(temp_dir, "chroma_db")
-            
-            # ChromaDBクライアントの初期化（永続化モード）
-            self.client = chromadb.PersistentClient(
-                path=persist_dir,
+            # インメモリモードでクライアントを初期化
+            self.client = chromadb.Client(
                 settings=chromadb.Settings(
                     anonymized_telemetry=False,
                     allow_reset=True,
-                    is_persistent=True,
-                    persist_directory=persist_dir
+                    is_persistent=False
                 )
             )
             

@@ -13,6 +13,12 @@ import datetime
 # 最初のStreamlitコマンドとしてページ設定を行う
 st.set_page_config(page_title='🦜🔗 Ask the Doc App', layout="wide")
 
+# セッション状態の初期化
+if 'documents' not in st.session_state:
+    st.session_state.documents = []
+if 'vector_store' not in st.session_state:
+    st.session_state.vector_store = None
+
 from langchain_openai import OpenAI
 from langchain import hub
 from langchain_core.output_parsers import StrOutputParser
@@ -262,6 +268,9 @@ def register_document(uploaded_file, additional_metadata=None):
             # ドキュメントを分割
             documents = text_splitter.split_documents([raw_document])
 
+            # セッション状態にドキュメントを保存
+            st.session_state.documents.extend(documents)
+
             # IDsの作成
             original_ids = []
             for i, doc in enumerate(documents):
@@ -269,9 +278,6 @@ def register_document(uploaded_file, additional_metadata=None):
                 start_ = doc.metadata.get('start_index', i)
                 id_str = f"{source_}_{start_:08}" #0パディングして8桁に
                 original_ids.append(id_str)
-                
-                # 各チャンクには共通のメタデータを維持
-                # start_indexは自動的に追加されるのでそのまま保持
 
             # グローバルのVectorStoreインスタンスを使用
             global vector_store
