@@ -7,7 +7,7 @@ from langchain_openai import OpenAIEmbeddings
 
 # ChatOpenAI
 llm = ChatOpenAI(
-    model="gpt-4",  # または "gpt-3.5-turbo" を使用
+    model="gpt-4o-mini",  # または "gpt-3.5-turbo" を使用
     temperature=0,
     api_key=OPENAI_API_KEY
 )
