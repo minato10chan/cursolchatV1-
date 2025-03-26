@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 import sys
 import sqlite3
+import tempfile
 
 # 環境変数のロード
 load_dotenv()
@@ -16,22 +17,22 @@ from langchain_openai import OpenAIEmbeddings
 # 固定のコレクション名
 COLLECTION_NAME = "ask_the_doc_collection"
 
-# データ保存用のディレクトリパス
-PERSIST_DIRECTORY = os.path.join(os.path.dirname(os.path.dirname(__file__)), "chroma_db")
-
 class VectorStore:
     def __init__(self):
         """ChromaDBのベクトルストアを初期化"""
         try:
-            # データ保存用ディレクトリが存在しない場合は作成
-            os.makedirs(PERSIST_DIRECTORY, exist_ok=True)
+            # 一時ディレクトリを使用
+            temp_dir = tempfile.gettempdir()
+            persist_dir = os.path.join(temp_dir, "chroma_db")
             
             # ChromaDBクライアントの初期化（永続化モード）
             self.client = chromadb.PersistentClient(
-                path=PERSIST_DIRECTORY,
+                path=persist_dir,
                 settings=chromadb.Settings(
                     anonymized_telemetry=False,
-                    allow_reset=True
+                    allow_reset=True,
+                    is_persistent=True,
+                    persist_directory=persist_dir
                 )
             )
             
@@ -51,11 +52,7 @@ class VectorStore:
             print("VectorStore initialization completed successfully")
             
         except Exception as e:
-            print(f"Error initializing ChromaDB: {e}")
-            self.collection = None
-            self.client = None
-            self.embeddings = None
-            # エラーを上位で処理するために再送出
+            print(f"Error initializing VectorStore: {e}")
             raise
 
     def add_documents(self, documents):
