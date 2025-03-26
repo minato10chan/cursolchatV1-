@@ -323,7 +323,8 @@ def manage_chromadb():
             
             with col2:
                 source = st.text_input("ソース元", "")
-                date_time = st.date_input("登録日時", value=None)
+                date_time = st.date_input("登録日時", value=pd.Timestamp.now().date())
+                publication_date = st.date_input("データ公開日", value=None)
                 latitude = st.text_input("緯度", "")
                 longitude = st.text_input("経度", "")
         
@@ -337,6 +338,7 @@ def manage_chromadb():
                     "medium_category": medium_category,
                     "source": source,
                     "registration_date": str(date_time) if date_time else "",
+                    "publication_date": str(publication_date) if publication_date else "",
                     "latitude": latitude,
                     "longitude": longitude,
                 }
@@ -395,6 +397,7 @@ def manage_chromadb():
                         "中カテゴリ": [m.get('medium_category', '') for m in filtered_metas],
                         "ソース元": [m.get('source', '') for m in filtered_metas],
                         "登録日時": [m.get('registration_date', '') for m in filtered_metas],
+                        "データ公開日": [m.get('publication_date', '') for m in filtered_metas],
                         "緯度経度": [f"{m.get('latitude', '')}, {m.get('longitude', '')}" for m in filtered_metas]
                     })
                     
@@ -476,6 +479,9 @@ def generate_response(query_text, filter_conditions=None):
                 )
                 docs.append(doc)
 
+            # 検索結果のドキュメントをセッション状態に保存
+            st.session_state.last_docs = docs
+
             # 使用するメタデータの情報を表示
             st.markdown("#### 検索結果")
             meta_info = []
@@ -522,6 +528,12 @@ def ask_question():
         st.info("ローカル環境での実行をお試しください。")
         return
 
+    # セッション状態で会話履歴を管理
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'current_chat' not in st.session_state:
+        st.session_state.current_chat = []
+
     # フィルタリング条件の設定
     with st.expander("検索範囲の絞り込み", expanded=False):
         col1, col2 = st.columns(2)
@@ -540,12 +552,25 @@ def ask_question():
             )
             filter_source = st.text_input("ソース元", "")
 
-    # Query text
-    query_text = st.text_input('質問を入力:', 
-                               placeholder='簡単な概要を記入してください')
+    # チャット履歴の表示
+    st.subheader("会話履歴")
+    for message in st.session_state.current_chat:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+            if "metadata" in message:
+                with st.expander("参照情報"):
+                    for meta in message["metadata"]:
+                        st.write(meta)
 
-    # 質問送信ボタン
-    if st.button('Submit') and query_text:
+    # 新しい質問の入力
+    query_text = st.chat_input('質問を入力してください')
+
+    if query_text:
+        # ユーザーの質問を表示
+        with st.chat_message("user"):
+            st.write(query_text)
+        st.session_state.current_chat.append({"role": "user", "content": query_text})
+
         with st.spinner('回答を生成中...'):
             # フィルタリング条件の作成
             filter_conditions = {}
@@ -560,10 +585,54 @@ def ask_question():
                 
             response = generate_response(query_text, filter_conditions)
             if response:
-                st.success("回答:")
-                st.info(response)
+                # アシスタントの回答を表示
+                with st.chat_message("assistant"):
+                    st.write(response)
+                    # メタデータ情報を表示
+                    with st.expander("参照情報"):
+                        for i, doc in enumerate(st.session_state.get('last_docs', [])):
+                            meta_str = ""
+                            if doc.metadata.get('municipality'):
+                                meta_str += f"【市区町村】{doc.metadata['municipality']} "
+                            if doc.metadata.get('major_category'):
+                                meta_str += f"【大カテゴリ】{doc.metadata['major_category']} "
+                            if doc.metadata.get('medium_category'):
+                                meta_str += f"【中カテゴリ】{doc.metadata['medium_category']} "
+                            if doc.metadata.get('source'):
+                                meta_str += f"【ソース元】{doc.metadata['source']}"
+                            st.write(f"{i+1}. {meta_str}")
+
+                # 会話履歴に追加
+                st.session_state.current_chat.append({
+                    "role": "assistant",
+                    "content": response,
+                    "metadata": [f"{i+1}. {meta_str}" for i, doc in enumerate(st.session_state.get('last_docs', []))]
+                })
             else:
                 st.error("回答の生成に失敗しました。")
+
+    # 会話履歴の保存と管理
+    if st.button("会話を保存"):
+        if st.session_state.current_chat:
+            st.session_state.chat_history.append({
+                "timestamp": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "conversation": st.session_state.current_chat.copy()
+            })
+            st.session_state.current_chat = []
+            st.success("会話を保存しました")
+
+    # 保存された会話履歴の表示
+    if st.session_state.chat_history:
+        st.subheader("保存された会話履歴")
+        for i, history in enumerate(st.session_state.chat_history):
+            with st.expander(f"会話 {i+1} - {history['timestamp']}"):
+                for message in history['conversation']:
+                    with st.chat_message(message["role"]):
+                        st.write(message["content"])
+                        if "metadata" in message:
+                            with st.expander("参照情報"):
+                                for meta in message["metadata"]:
+                                    st.write(meta)
 
 def fallback_mode():
     """
